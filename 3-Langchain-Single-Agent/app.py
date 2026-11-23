@@ -6,12 +6,8 @@ from dotenv import load_dotenv
 
 from langchain_openai import ChatOpenAI
 from langchain.tools import tool
-from langchain.agents import (
-    create_react_agent,
-    AgentExecutor
-)
-from langchain import hub
-
+from langchain.agents import create_agent
+from langsmith import Client
 from langchain_community.tools.tavily_search import TavilySearchResults
 
 # ==========================================
@@ -23,6 +19,7 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 WEATHERSTACK_API_KEY = os.getenv("WEATHERSTACK_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+LANGSMITH_API_KEY=os.getenv("LANGSMITH_API_KEY")
 
 # ==========================================
 # STREAMLIT PAGE CONFIG
@@ -79,16 +76,17 @@ def get_weather_data(city: str) -> str:
 # ==========================================
 
 llm = ChatOpenAI(
-    model="gpt-3.5-turbo",
-    temperature=0,
-    api_key=OPENAI_API_KEY
+    api_key=os.getenv("OPENAI_API_KEY"),
+    base_url="https://api.groq.com/openai/v1",
+    model = "openai/gpt-oss-120b"
 )
+
 
 # ==========================================
 # PROMPT
 # ==========================================
-
-prompt = hub.pull("hwchase17/react")
+client = Client(api_key=os.getenv("LANGSMITH_API_KEY"))
+prompt = client.pull_prompt("agentic_test")
 
 # ==========================================
 # TOOLS
@@ -103,21 +101,9 @@ tools = [
 # CREATE AGENT
 # ==========================================
 
-agent = create_react_agent(
-    llm=llm,
+agent= create_agent(
     tools=tools,
-    prompt=prompt
-)
-
-# ==========================================
-# EXECUTOR
-# ==========================================
-
-agent_executor = AgentExecutor(
-    agent=agent,
-    tools=tools,
-    verbose=True,
-    handle_parsing_errors=True
+    model=llm,
 )
 
 # ==========================================
@@ -140,14 +126,19 @@ if st.button("Run Agent"):
         with st.spinner("Agent is thinking..."):
 
             try:
-                response = agent_executor.invoke({
-                    "input": user_query
+                response = agent.invoke({
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": user_query
+                        }
+                    ]
                 })
 
                 st.success("Response Generated")
 
                 st.markdown("## Final Response")
-                st.write(response["output"])
+                st.write(response["messages"][-1].content)
 
             except Exception as e:
                 st.error(f"Error: {str(e)}")
